@@ -1,7 +1,7 @@
-import UIKit
-import Combine
+import Foundation
 
 class MockURLProtocol: URLProtocol {
+    
     static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
     
     override class func canInit(with request: URLRequest) -> Bool {
@@ -15,32 +15,36 @@ class MockURLProtocol: URLProtocol {
     override func stopLoading() { }
     
     override func startLoading() {
-         guard let handler = MockURLProtocol.requestHandler else {
-            return
-        }
         
-        do {
-            let (response, data)  = try handler(request)
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch  {
-            client?.urlProtocol(self, didFailWithError: error)
+        DispatchQueue.global(qos: .default).asyncAfter(deadline: .now() + 1) {
+            
+            guard let handler = MockURLProtocol.requestHandler else {
+                return
+            }
+            
+            do {
+                let (response, data)  = try handler(self.request)
+                self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                self.client?.urlProtocol(self, didLoad: data)
+                self.client?.urlProtocolDidFinishLoading(self)
+            } catch  {
+                self.client?.urlProtocol(self, didFailWithError: error)
+            }
         }
     }
-}
-
-func setMockProtocol() {
-    MockURLProtocol.requestHandler = { request in
-        let exampleData =
-        """
-        {
-        "base": "USD"
+    
+    static func setMockProtocol() {
+        Self.requestHandler = { request in
+            let exampleData =
+            """
+            {
+            "base": "USD"
+            }
+            """
+                .data(using: .utf8)!
+            let response = HTTPURLResponse.init(url: request.url!, statusCode: 200, httpVersion: "2.0", headerFields: nil)!
+            return (response, exampleData)
         }
-        """
-            .data(using: .utf8)!
-        let response = HTTPURLResponse.init(url: request.url!, statusCode: 200, httpVersion: "2.0", headerFields: nil)!
-        return (response, exampleData)
     }
 }
 
@@ -56,7 +60,7 @@ let url = URL(string: "some_url")!
 let sessionConfiguration = URLSessionConfiguration.ephemeral
 sessionConfiguration.protocolClasses = [MockURLProtocol.self]
 let session = URLSession(configuration: sessionConfiguration)
-setMockProtocol()
+MockURLProtocol.setMockProtocol()
 
 // Make request
 session.dataTask(with: url) { data, response, error in
